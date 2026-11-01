@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>给欣悦神的星河</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #020308; color: #fff; overflow: hidden; font-family: -apple-system, sans-serif; height: 100vh; }
+  
+  /* 授权层 */
+  .auth-overlay {
+    position: fixed; inset: 0; background: #020308; z-index: 999; 
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; transition: opacity 0.8s;
+  }
+  .auth-overlay.hide { opacity: 0; pointer-events: none; }
+  .auth-btn {
+    margin-top: 30px; padding: 18px 60px; border-radius: 50px; border: none; font-size: 22px; font-weight: bold;
+    background: #fff; color: #000; cursor: pointer; transition: 0.3s; box-shadow: 0 0 20px rgba(255,255,255,0.3);
+  }
+
+  /* 3D 画布 */
+  #canvas-container { position: fixed; inset: 0; z-index: 1; }
+
+  /* UI 界面 */
+  #ui-layer {
+    position: fixed; inset: 0; z-index: 10; pointer-events: none;
+    display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 30px 20px;
+  }
+  .header { text-align: center; }
+  h1 { margin: 0 0 15px 0; font-size: 24px; font-weight: 300; letter-spacing: 4px; text-shadow: 0 0 15px rgba(255,255,255,0.6); min-height: 32px; }
+  .hint { font-size: 14px; color: #aabbdd; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .mic-dot { width: 8px; height: 8px; border-radius: 50%; background: #ff4757; transition: 0.3s; }
+  .mic-dot.active { background: #2ed573; box-shadow: 0 0 10px #2ed573; }
+
+  /* 塔罗牌区域 */
+  #tarot-area {
+    display: none; flex-wrap: nowrap; justify-content: center; gap: 10px;
+    perspective: 1500px; width: 100%; max-width: 900px; padding: 20px 0; margin-bottom: 10px;
+  }
+  #tarot-area.show { display: flex; animation: fadeUp 1s forwards; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+
+  .card {
+    width: 105px; height: 160px; cursor: pointer; position: relative;
+    transform-style: preserve-3d; transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    pointer-events: none; /* 禁用鼠标点击，全靠手势 */
+  }
+  .card.flipped { transform: rotateY(180deg); }
+  
+  .card-face {
+    position: absolute; inset: 0; border-radius: 10px; backface-visibility: hidden;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 12px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+  }
+  .card-back {
+    background: linear-gradient(135deg, #0d111c, #1a2347); border: 1px solid rgba(255, 215, 0, 0.3);
+    background-image: radial-gradient(circle at 50% 50%, rgba(255,215,0,0.15) 0%, transparent 60%);
+  }
+  .card-back::after { content: '✦'; color: #ffd700; font-size: 28px; text-shadow: 0 0 15px #ffd700; animation: pulse 2s infinite alternate; }
+  @keyframes pulse { from { transform: scale(0.8); opacity: 0.5; } to { transform: scale(1.2); opacity: 1; } }
+
+  .card-front {
+    background: linear-gradient(180deg, #101420, #050810); color: #ffd700; transform: rotateY(180deg);
+    font-family: "Kaiti", serif; border: 2px solid #ffd700; box-shadow: inset 0 0 20px rgba(255,215,0,0.15), 0 0 25px rgba(255,215,0,0.4);
+  }
+  .card-title { font-size: 13px; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid rgba(255,215,0,0.4); padding-bottom: 4px; }
+  .card-text { font-size: 11px; line-height: 1.5; color: #e0e0e0; text-align: justify; }
+
+  #openLetterBtn {
+    pointer-events: auto; padding: 14px 50px; border-radius: 30px; border: 1px solid #ffd700;
+    background: rgba(255,215,0,0.1); color: #ffd700; font-size: 16px; cursor: pointer; display: none; opacity: 0;
+    backdrop-filter: blur(10px); transition: 0.3s; box-shadow: 0 0 20px rgba(255,215,0,0.2);
+  }
+  #openLetterBtn.show { display: block; animation: fadeIn 1s forwards; }
+  @keyframes fadeIn { to { opacity: 1; } }
+
+  /* 信件 */
+  .letter-mask {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: 0.5s; z-index: 200;
+  }
+  .letter-mask.show { opacity: 1; pointer-events: auto; }
+  .letter {
+    width: min(600px, 90vw); max-height: 80vh; overflow-y: auto; background: #fcfcfc; color: #222;
+    padding: 40px 30px; border-radius: 12px; font-family: "Kaiti", serif; line-height: 2; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  }
+  .letter p { margin-bottom: 15px; text-indent: 2em; font-size: 15px; }
+  .letter .quote { text-align: center; font-style: italic; text-indent: 0; margin: 20px 0; color: #666; }
+  .close-btn { display: block; margin: 30px auto 0; padding: 10px 30px; border: none; background: #333; color: #fff; cursor: pointer; border-radius: 20px; }
+
+  /* 摄像头与手势追踪窗口 */
+  .cam-box {
+    position: fixed; bottom: 20px; right: 20px; width: 180px; height: 135px; border-radius: 12px; overflow: hidden;
+    border: 2px solid rgba(255, 215, 0, 0.5); z-index: 100; transform: scaleX(-1); display: none;
+    box-shadow: 0 0 20px rgba(0,0,0,0.8); background: #000;
+  }
+  .cam-box.active { display: block; }
+  .cam-box video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.6; }
+  .cam-box canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .cam-tip { position: absolute; bottom: 5px; left: 0; width: 100%; text-align: center; font-size: 10px; color: #ffd700; background: rgba(0,0,0,0.5); padding: 2px 0; }
+</style>
+<!-- 引入 Three.js 和 MediaPipe AI -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+<div class="auth-overlay" id="authOverlay">
+  <div style="margin-bottom: 15px; font-size: 14px; color: #8899bb; letter-spacing: 2px;">A LITTLE UNIVERSE, JUST FOR YOU</div>
+  <div style="font-size: 24px; font-weight: 300; margin-bottom: 20px; color: #fff;">把星河，送给你。</div>
+  <button class="auth-btn" id="startBtn">点击开启星河</button>
+  <div style="margin-top: 40px; font-size: 13px; color: #556688; text-align: center;">* 点击后请允许摄像头与麦克风<br>以便体验隔空吹气与手势抽卡</div>
+</div>
+
+<div id="canvas-container"></div>
+
+<div id="ui-layer">
+  <div class="header">
+    <h1 id="title"></h1>
+    <div class="hint" id="hint"><div class="mic-dot" id="micDot"></div><span id="hintText">等待开启…</span></div>
+  </div>
+  <div id="tarot-area"></div>
+  <button id="openLetterBtn">💌 展开那封信</button>
+</div>
+
+<!-- 摄像头与 AI 画布 -->
+<div class="cam-box" id="camBox">
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="handCanvas"></canvas>
+  <div class="cam-tip">食指与拇指捏合抽卡</div>
+</div>
+
+<div class="letter-mask" id="letterMask">
+  <div class="letter">
+    <div style="text-align:right; font-size:13px; color:#888; margin-bottom:20px;">2026年11月1日 周日</div>
+    <div style="font-size:18px; font-weight:bold; margin-bottom:20px;">亲爱的欣悦神：</div>
+    <p>二十一岁，是一棵树的可能伸向了四面八方。向上枝桠渐密，叶片渐厚，撑开自己的荫凉；向下根系在土里，悄悄延伸，不急不慌，触到更深的湿润。你就是这样一棵树，年轮一圈圈的增加，我的祝愿永远不会改变。</p>
+    <p>一条刚刚流出山谷的溪流，绕过你，根系深扎，吸收生命的甘泉。你的根系扎在这座巍峨的山，高山沉默，予你厚重；流水灵动，让你柔软。一棵盘根错节的树站在山腰，扎根进石缝里，枝伸向云深处。我始终站在你身边，共淋一场滂霈的甘霖。</p>
+    <p class="quote">"木欣欣以向荣，泉涓涓而始流。"</p>
+    <p>春天会来，秋天也会来，而你始终在徐徐前行的路上。阳光正好，雨水正足，所有的枝桠都在朝最好的方向伸展。</p>
+    <p>二十一岁，是一棵树最舒展的季节。稳稳站在自己的土壤里，这片山坡有我们曾经所有淋过的雨。愿你二十一岁的枝头，长满无限可能的枝叶，无论伸向那一方，都是前方。</p>
+    <p style="text-align:center; font-weight:bold; margin-top:30px;">愿你如树，充满无限可能，二十一岁生日快乐。</p>
+    <div style="text-align:right; margin-top:40px; font-weight:bold;">—— 永远站在你身边的我</div>
+    <button class="close-btn" id="closeBtn">收好这封信</button>
+  </div>
+</div>
+
+<script>
+/* ================= 1. 基础逻辑 ================= */
+const startBtn = document.getElementById('startBtn');
+const authOverlay = document.getElementById('authOverlay');
+const titleEl = document.getElementById('title');
+const hintText = document.getElementById('hintText');
+const micDot = document.getElementById('micDot');
+const openLetterBtn = document.getElementById('openLetterBtn');
+const video = document.getElementById('video');
+const camBox = document.getElementById('camBox');
+const tarotArea = document.getElementById('tarot-area');
+let blown = false;
+let handsActive = false;
+
+startBtn.addEventListener('click', async () => {
+  authOverlay.classList.add('hide');
+  typeTitle();
+  playBGM();
+  initThreeJS(); // 开启 3D 蛋糕
+
+  document.getElementById('canvas-container').addEventListener('click', blowOutCandle);
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = stream;
+    hintText.textContent = "对着屏幕吹气，或点击蛋糕";
+    micDot.classList.add('active');
+    startVisionDetection();
+  } catch (err) {
+    hintText.textContent = "未开启权限，请直接点击蛋糕";
+  }
+});
+
+const titleStr = "把星河，送给你。";
+let tIdx = 0;
+function typeTitle() {
+  if (tIdx < titleStr.length) { titleEl.textContent += titleStr[tIdx++]; setTimeout(typeTitle, 150); }
+}
+
+// 视觉吹气检测
+function startVisionDetection() {
+  const canvas = document.createElement('canvas'); canvas.width = 20; canvas.height = 20;
+  const ctx = canvas.getContext('2d');
+  let last = null;
+  setInterval(() => {
+    if (blown || video.readyState < 2) return;
+    ctx.drawImage(video, 0, 0, 20, 20);
+    const d = ctx.getImageData(0,0,20,20).data;
+    let sum = 0; for(let i=0; i<d.length; i+=4) sum+=d[i];
+    let avg = sum / 400;
+    if (last !== null && Math.abs(avg - last) > 10) blowOutCandle();
+    last = avg;
+  }, 100);
+}
+
+function blowOutCandle() {
+  if (blown) return; blown = true;
+  hintText.textContent = "✨ 愿望已收到，请用手势翻开塔罗 ✨";
+  hintText.style.color = "#ffd700";
+  micDot.classList.remove('active');
+  window.extinguishFlame();
+  
+  setTimeout(() => {
+    renderTarot();
+    tarotArea.classList.add('show');
+    camBox.classList.add('active'); // 显示摄像头追踪
+    handsActive = true;
+    initHandTracking(); // 启动手势识别
+  }, 800);
+}
+
+/* ================= 2. 塔罗牌渲染 ================= */
+const tarotData = [
+  { title: '星星', text: '愿你像星星一样，在自己的轨道上闪闪发光，指引方向，也照亮自己。' },
+  { title: '太阳', text: '二十一岁的阳光正好，愿你永远灿烂，所有的阴霾都被笑容驱散。' },
+  { title: '世界', text: '愿你拥有广阔的世界，去想去的地方，做想做的事，成为想成为的人。' },
+  { title: '月亮', text: '愿你内心的宇宙深邃且温柔，在每一个独处的夜晚，都能拥有平静与美梦。' },
+  { title: '命运之轮', text: '不管命运的齿轮转向哪里，愿好运永远偏爱你，所有美好都如期而至。' },
+  { title: '愚者', text: '愿你永远保持勇敢和好奇心，像这棵树一样，向着未知的方向自由生长。' }
+];
+
+function renderTarot() {
+  tarotData.forEach((data, index) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    // 给卡片绑定坐标信息，方便手势检测
+    card.dataset.index = index;
+    card.innerHTML = `
+      <div class="card-face card-back"></div>
+      <div class="card-face card-front">
+        <div class="card-title">${data.title}</div>
+        <div class="card-text">${data.text}</div>
+      </div>
+    `;
+    tarotArea.appendChild(card);
+  });
+}
+
+document.getElementById('openLetterBtn').addEventListener('click', () => document.getElementById('letterMask').classList.add('show'));
+document.getElementById('closeBtn').addEventListener('click', () => document.getElementById('letterMask').classList.remove('show'));
+
+/* ================= 3. 甜美 BGM ================= */
+let audioCtx = null;
+function playBGM() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const melody = [523.25, 659.25, 783.99, 1046.50, 783.99, 659.25, 523.25, 587.33];
+  let index = 0;
+  function playNote() {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = melody[index % melody.length];
+    const now = audioCtx.currentTime;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.15, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(now); osc.stop(now + 1.5);
+    index++;
+    setTimeout(playNote, 400); 
+  }
+  playNote();
+}
+
+/* ================= 4. MediaPipe 手势识别 AI ================= */
+const handCanvas = document.getElementById('handCanvas');
+const canvasCtx = handCanvas.getContext('2d');
+let lastPinchState = false;
+
+function initHandTracking() {
+  const hands = new Hands({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 0, // 低复杂度，保证网页流畅
+    minDetectionConfidence: 0.6,
+    minTrackingConfidence: 0.6
+  });
+
+  hands.onResults(onHandResults);
+
+  const camera = new Camera(video, {
+    onFrame: async () => {
+      if (handsActive) await hands.send({ image: video });
+    },
+    width: 320,
+    height: 240
+  });
+  camera.start();
+}
+
+function onHandResults(results) {
+  // 调整画布尺寸
+  if (handCanvas.width !== results.image.width) {
+    handCanvas.width = results.image.width;
+    handCanvas.height = results.image.height;
+  }
+  canvasCtx.clearRect(0, 0, handCanvas.width, handCanvas.height);
+
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    const landmarks = results.multiHandLandmarks[0];
+    
+    // 画出手部金色骨架
+    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#ffd700', lineWidth: 2 });
+    drawLandmarks(canvasCtx, landmarks, { color: '#ffffff', lineWidth: 1, radius: 2 });
+
+    // 获取食指(8)和拇指(4)的坐标
+    const thumbTip = landmarks[4];
+    const indexTip = landmarks[8];
+
+    // 计算捏合距离
+    const dx = thumbTip.x - indexTip.x;
+    const dy = thumbTip.y - indexTip.y;
+    const distance = Math.sqrt(dx*dx + dy*dy);
+
+    // 如果距离足够近，判定为“捏合”动作
+    const isPinching = distance < 0.05; // 阈值可调
+
+    // 边缘检测：从松开到捏合的瞬间触发
+    if (isPinching && !lastPinchState) {
+      // 获取食指中心点映射到屏幕上的坐标
+      // 注意：摄像头是镜像的，所以 x 坐标要反向
+      const screenX = (1 - indexTip.x) * window.innerWidth;
+      const screenY = indexTip.y * window.innerHeight;
+      
+      triggerCardByHand(screenX, screenY);
+      
+      // 触发时手部产生绿光反馈
+      drawLandmarks(canvasCtx, landmarks, { color: '#00ff00', lineWidth: 2, radius: 3 });
+    }
+    lastPinchState = isPinching;
+  } else {
+    lastPinchState = false;
+  }
+}
+
+// 判断手点到了哪张牌并翻转
+function triggerCardByHand(x, y) {
+  const cards = document.querySelectorAll('.card');
+  let hitCard = null;
+
+  cards.forEach(card => {
+    if (card.classList.contains('flipped')) return;
+    const rect = card.getBoundingClientRect();
+    // 扩大一点判定范围
+    if (x >= rect.left - 20 && x <= rect.right + 20 && y >= rect.top - 20 && y <= rect.bottom + 20) {
+      hitCard = card;
+    }
+  });
+
+  if (hitCard) {
+    hitCard.classList.add('flipped');
+    // 显示信件按钮
+    setTimeout(() => {
+      openLetterBtn.classList.add('show');
+      hintText.textContent = "✨ 星河已为你铺好，请查收信件 ✨";
+    }, 600);
+  }
+}
+
+/* ================= 5. Three.js 蛋糕渲染 ================= */
+let scene, camera, renderer, cakeGroup, flameMesh, light;
+
+window.extinguishFlame = function() {
+  if(flameMesh) {
+    let scale = 1;
+    let intv = setInterval(() => {
+      scale -= 0.1;
+      if (scale <= 0) { clearInterval(intv); flameMesh.visible = false; }
+      else { flameMesh.scale.set(scale, scale, scale); }
+    }, 30);
+    if(light) light.intensity = 0;
+  }
+};
+
+function initThreeJS() {
+  const container = document.getElementById('canvas-container');
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x020308, 0.05);
+  
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 1, 8);
+  
+  renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  container.appendChild(renderer.domElement);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+  light = new THREE.PointLight(0xffaa00, 3, 10);
+  light.position.set(0, 2, 0); scene.add(light);
+  const fillLight = new THREE.DirectionalLight(0x88bbff, 1.5);
+  fillLight.position.set(5, 5, 5); scene.add(fillLight);
+
+  cakeGroup = new THREE.Group();
+  scene.add(cakeGroup);
+
+  // 盘子
+  const plateMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.1, metalness: 0.8, clearcoat: 1 });
+  const plate = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 0.1, 64), plateMat);
+  plate.position.y = -1.5; cakeGroup.add(plate);
+
+  // 底层
+  const layer1Mat = new THREE.MeshPhysicalMaterial({ color: 0x0f1738, roughness: 0.3, clearcoat: 1, emissive: 0x050a1f, emissiveIntensity: 0.5 });
+  const layer1 = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 1.2, 64), layer1Mat);
+  layer1.position.y = -0.85; cakeGroup.add(layer1);
+
+  // 顶层
+  const layer2Mat = new THREE.MeshPhysicalMaterial({ color: 0x3b1b5e, roughness: 0.2, clearcoat: 1, emissive: 0x1a0a2e, emissiveIntensity: 0.5 });
+  const layer2 = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 1, 64), layer2Mat);
+  layer2.position.y = 0.25; cakeGroup.add(layer2);
+
+  // 蜡烛与火焰
+  const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1, 32), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+  candle.position.y = 1.25; cakeGroup.add(candle);
+
+  const flameGeo = new THREE.SphereGeometry(0.15, 16, 16); flameGeo.scale(1, 2, 1);
+  flameMesh = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.9 }));
+  flameMesh.position.y = 1.9; cakeGroup.add(flameMesh);
+
+  // 星轨
+  const ringGeo = new THREE.TorusGeometry(2.6, 0.015, 16, 100);
+  const ring1 = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0x55aaff, transparent: true, opacity: 0.6 }));
+  ring1.rotation.x = Math.PI / 2.2; ring1.rotation.y = Math.PI / 6; cakeGroup.add(ring1);
+  const ring2 = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xff88cc, transparent: true, opacity: 0.4 }));
+  ring2.rotation.x = Math.PI / 3; ring2.rotation.y = -Math.PI / 4; ring2.scale.set(0.9, 0.9, 0.9); cakeGroup.add(ring2);
+
+  // 星空背景
+  const starsGeo = new THREE.BufferGeometry();
+  const posArray = new Float32Array(1200 * 3);
+  for(let i = 0; i < 1200 * 3; i+=3) {
+    posArray[i] = (Math.random() - 0.5) * 40;
+    posArray[i+1] = (Math.random() - 0.5) * 40;
+    posArray[i+2] = (Math.random() - 0.5) * 40 - 10;
+  }
+  starsGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+  const starField = new THREE.Points(starsGeo, new THREE.PointsMaterial({ size: 0.05, color: 0xaaddff, transparent: true, opacity: 0.6 }));
+  scene.add(starField);
+
+  const clock = new THREE.Clock();
+  
+  function animate() {
+    requestAnimationFrame(animate);
+    const time = clock.getElapsedTime();
+
+    cakeGroup.rotation.y = time * 0.15;
+    ring1.rotation.z = time * 0.6;
+    ring2.rotation.z = -time * 0.4;
+    starField.rotation.y = time * 0.02;
+
+    if(flameMesh && flameMesh.visible) {
+      flameMesh.scale.x = 1 + Math.sin(time * 20) * 0.1;
+      flameMesh.scale.z = 1 + Math.cos(time * 15) * 0.1;
+      flameMesh.position.y = 1.9 + Math.sin(time * 10) * 0.02;
+      light.intensity = 2.5 + Math.sin(time * 18) * 1;
+    }
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+}
+</script>
+</body>
+</html>
